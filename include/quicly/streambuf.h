@@ -40,6 +40,8 @@ typedef struct st_quicly_streambuf_t {
     struct {
         ptls_buffer_t buf;
         uint64_t max_stream_data;
+        size_t off;
+
     } egress;
     ptls_buffer_t ingress;
 } quicly_streambuf_t;

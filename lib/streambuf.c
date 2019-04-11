@@ -42,6 +42,7 @@ int quicly_streambuf_create(quicly_stream_t *stream, size_t sz)
         return PTLS_ERROR_NO_MEMORY;
     ptls_buffer_init(&sbuf->egress.buf, "", 0);
     sbuf->egress.max_stream_data = 0;
+    sbuf->egress.off = 0;
     ptls_buffer_init(&sbuf->ingress, "", 0);
     if (sz != sizeof(*sbuf))
         memset((char *)sbuf + sizeof(*sbuf), 0, sz - sizeof(*sbuf));
@@ -63,23 +64,30 @@ void quicly_streambuf_destroy(quicly_stream_t *stream, int err)
 void quicly_streambuf_egress_shift(quicly_stream_t *stream, size_t delta)
 {
     quicly_streambuf_t *sbuf = stream->data;
-    shift_bytes(&sbuf->egress.buf, delta);
+
+    if (quicly_sendstate_is_open(&stream->sendstate))
+        shift_bytes(&sbuf->egress.buf, delta);
+    else {
+        assert(sbuf->egress.off + delta <= sbuf->egress.buf.off);
+        sbuf->egress.off += delta;
+    }
     quicly_stream_sync_sendbuf(stream, 0);
 }
 
 int quicly_streambuf_egress_emit(quicly_stream_t *stream, size_t off, void *dst, size_t *len, int *wrote_all)
 {
     quicly_streambuf_t *sbuf = stream->data;
+    size_t avail = sbuf->egress.buf.off - sbuf->egress.off;
 
-    assert(off < sbuf->egress.buf.off);
+    assert(off < avail);
 
-    if (off + *len < sbuf->egress.buf.off) {
+    if (off + *len < avail) {
         *wrote_all = 0;
     } else {
-        *len = sbuf->egress.buf.off - off;
+        *len = avail - off;
         *wrote_all = 1;
     }
-    memcpy(dst, sbuf->egress.buf.base + off, *len);
+    memcpy(dst, sbuf->egress.buf.base + sbuf->egress.off + off, *len);
 
     return 0;
 }
