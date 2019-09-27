@@ -810,6 +810,10 @@ int quicly_can_send_stream_data(quicly_conn_t *conn, quicly_send_context_t *s);
  * the responsibilty of the stream scheduler to maintain a list of such streams.
  */
 int quicly_send_stream(quicly_stream_t *stream, quicly_send_context_t *s);
+
+int quicly_send_datagrams(quicly_send_context_t *s);
+
+
 /**
  *
  */
