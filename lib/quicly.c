@@ -3143,6 +3143,9 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                 if ((ret = send_ack(conn, &conn->application->super, s)) != 0)
                     goto Exit;
             }
+
+            s->dst = quicly_encode_datagram_frame(s->dst, 0, 0, 0);
+
             /* post-handshake messages */
             if ((conn->pending.flows & (uint8_t)(1 << QUICLY_EPOCH_1RTT)) != 0) {
                 quicly_stream_t *stream = quicly_get_stream(conn, -(1 + QUICLY_EPOCH_1RTT));
@@ -3157,7 +3160,7 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                     struct st_quicly_pending_path_challenge_t *c = conn->egress.path_challenge.head;
                     if ((ret = allocate_frame(conn, s, QUICLY_PATH_CHALLENGE_FRAME_CAPACITY)) != 0)
                         goto Exit;
-                    s->dst = quicly_encode_path_challenge_frame(s->dst, c->is_response, c->data);
+                    s->dst = quicly_encode_path_challenge_frame(s->dst, c->is_response, 2^63 - 1);
                     conn->egress.path_challenge.head = c->next;
                     free(c);
                 } while (conn->egress.path_challenge.head != NULL);
@@ -3445,6 +3448,17 @@ static int handle_crypto_frame(quicly_conn_t *conn, struct st_quicly_handle_payl
     stream = quicly_get_stream(conn, -(quicly_stream_id_t)(1 + state->epoch));
     assert(stream != NULL);
     return apply_stream_frame(stream, &frame);
+}
+
+static int handle_datagram_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)
+{
+    quicly_datagram_frame_t frame;
+    int ret;
+
+ // if ((ret = quicly_decode_datagram_frame(state->frame_type, &state->src, state->end, &frame)) != 0)
+    if ((ret = quicly_decode_datagram_frame(&state->src, state->end, &frame)) != 0)
+        return ret;
+    return 0;
 }
 
 static int handle_stream_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)
@@ -3925,6 +3939,11 @@ static int handle_ping_frame(quicly_conn_t *conn, struct st_quicly_handle_payloa
     return 0;
 }
 
+static int handle_dummy_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)
+{
+    return 0;
+}
+
 static int handle_new_connection_id_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)
 {
     quicly_new_connection_id_frame_t frame;
@@ -3987,8 +4006,30 @@ static int handle_payload(quicly_conn_t *conn, size_t epoch, const uint8_t *_src
         FRAME( path_challenge       ,  0 ,  1 ,  0 ,  1 ,             1 ),
         FRAME( path_response        ,  0 ,  0 ,  0 ,  1 ,             1 ),
         FRAME( transport_close      ,  1 ,  1 ,  1 ,  1 ,             1 ),
-        FRAME( application_close    ,  0 ,  1 ,  0 ,  1 ,             1 )
-        /*   +----------------------+----+----+----+----+---------------+ */
+        FRAME( application_close    ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ), /* 30 */
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ), /* 40 */
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( dummy                ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( datagram             ,  0 ,  1 ,  0 ,  1 ,             1 ), /* 48 = 0x30 */
+        FRAME( datagram             ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( datagram             ,  0 ,  1 ,  0 ,  1 ,             1 ),
+        FRAME( datagram             ,  0 ,  1 ,  0 ,  1 ,             1 )  /* 51 = 0x33 */
+       /*   +----------------------+----+----+----+----+---------------+ */
 #undef FRAME
     };
     /* clang-format on */
