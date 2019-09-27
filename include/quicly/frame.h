@@ -26,6 +26,7 @@
 extern "C" {
 #endif
 
+#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -56,6 +57,7 @@ extern "C" {
 #define QUICLY_FRAME_TYPE_PATH_RESPONSE 27
 #define QUICLY_FRAME_TYPE_TRANSPORT_CLOSE 28
 #define QUICLY_FRAME_TYPE_APPLICATION_CLOSE 29
+#define QUICLY_FRAME_TYPE_DATAGRAM 0x30
 
 #define QUICLY_FRAME_TYPE_STREAM_BITS 0x7
 #define QUICLY_FRAME_TYPE_STREAM_BIT_OFF 0x4
@@ -96,10 +98,18 @@ typedef struct st_quicly_stream_frame_t {
     ptls_iovec_t data;
 } quicly_stream_frame_t;
 
+typedef struct st_quicly_datagram_frame_t {
+    uint64_t flow_id;
+    uint64_t len;
+    ptls_iovec_t data;
+} quicly_datagram_frame_t;
+
+static int quicly_decode_datagram_frame(const uint8_t **src, const uint8_t *end, quicly_datagram_frame_t *frame);
 static int quicly_decode_stream_frame(uint8_t type_flags, const uint8_t **src, const uint8_t *end, quicly_stream_frame_t *frame);
 static uint8_t *quicly_encode_crypto_frame_header(uint8_t *dst, uint8_t *dst_end, uint64_t offset, size_t *data_len);
 static int quicly_decode_crypto_frame(const uint8_t **src, const uint8_t *end, quicly_stream_frame_t *frame);
 
+static uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t flow_id, uint64_t len, uint64_t data);
 static uint8_t *quicly_encode_rst_stream_frame(uint8_t *dst, uint64_t stream_id, uint16_t app_error_code, uint64_t final_offset);
 
 typedef struct st_quicly_rst_stream_frame_t {
@@ -390,6 +400,17 @@ Error:
     return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
 }
 
+inline int quicly_decode_datagram_frame(const uint8_t **src, const uint8_t *end, quicly_datagram_frame_t *frame)
+{
+    /* obtain data */
+    if ((frame->flow_id = quicly_decodev(src, end)) == UINT64_MAX)
+        return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
+    printf("%s: val = 0x%" PRIx64 "\n", __FUNCTION__, frame->flow_id);
+    // frame->data = ptls_iovec_init(*src, end - *src);
+    // *src = end;
+    return 0;
+}
+
 inline uint8_t *quicly_encode_crypto_frame_header(uint8_t *dst, uint8_t *dst_end, uint64_t offset, size_t *data_len)
 {
     size_t sizeleft, len_length;
@@ -433,6 +454,18 @@ inline int quicly_decode_crypto_frame(const uint8_t **src, const uint8_t *end, q
     return 0;
 Error:
     return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
+}
+
+inline uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t flow_id, uint64_t len, uint64_t data)
+{
+    *dst++ = QUICLY_FRAME_TYPE_DATAGRAM;
+    if (flow_id != 0)
+        dst = quicly_encodev(dst, flow_id);
+    if (len != 0)
+        dst = quicly_encodev(dst, len);
+    dst = quicly_encodev(dst, data);
+    printf( "%s \n", __FUNC__);
+    return dst;
 }
 
 inline uint8_t *quicly_encode_rst_stream_frame(uint8_t *dst, uint64_t stream_id, uint16_t app_error_code, uint64_t final_offset)
