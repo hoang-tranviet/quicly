@@ -3099,6 +3099,8 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
     int restrict_sending = 0, ret;
     size_t min_packets_to_send = 0;
 
+    fprintf(stderr, "%s: \n", __FUNCTION__);
+
     /* handle timeouts */
     if (conn->egress.loss.alarm_at <= now) {
         if ((ret = quicly_loss_on_alarm(&conn->egress.loss, conn->egress.packet_number - 1,
@@ -3135,6 +3137,7 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
     }
 
     /* send handshake flows */
+    fprintf(stderr, "%s: send_handshake_flow \n", __FUNCTION__);
     if ((ret = send_handshake_flow(conn, QUICLY_EPOCH_INITIAL, s,
                                    conn->super.peer.address_validation.send_probe && conn->handshake == NULL)) != 0)
         goto Exit;
@@ -3142,8 +3145,10 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
         goto Exit;
 
     /* send encrypted frames */
-    if (conn->application != NULL && (s->current.cipher = &conn->application->cipher.egress)->header_protection != NULL) {
+     fprintf(stderr, "%s: send encrypted frames \n", __FUNCTION__);
+   if (conn->application != NULL && (s->current.cipher = &conn->application->cipher.egress)->header_protection != NULL) {
         if (conn->application->one_rtt_writable) {
+            fprintf(stderr, "%s: one_rtt_writable: %d \n", __FUNCTION__, conn->application->one_rtt_writable);
             s->current.first_byte = QUICLY_QUIC_BIT; /* short header */
             /* acks */
             if (conn->application->super.unacked_count != 0) {
@@ -3244,6 +3249,8 @@ int quicly_send(quicly_conn_t *conn, quicly_datagram_t **packets, size_t *num_pa
 
     QUICLY_PROBE(SEND, conn, probe_now(), conn->super.state,
                  QUICLY_PROBE_HEXDUMP(conn->super.peer.cid.cid, conn->super.peer.cid.len));
+
+    // fprintf(stderr, "%s: num_packets: %ld \n", __FUNCTION__, *num_packets);
 
     if (conn->super.state >= QUICLY_STATE_CLOSING) {
         /* check if the connection can be closed now (after 3 pto) */
@@ -3462,6 +3469,8 @@ static int handle_datagram_frame(quicly_conn_t *conn, struct st_quicly_handle_pa
 {
     quicly_datagram_frame_t frame;
     int ret;
+
+    fprintf(stderr, "%s \n", __FUNCTION__);
 
  // if ((ret = quicly_decode_datagram_frame(state->frame_type, &state->src, state->end, &frame)) != 0)
     if ((ret = quicly_decode_datagram_frame(&state->src, state->end, &frame)) != 0)
@@ -4048,15 +4057,24 @@ static int handle_payload(quicly_conn_t *conn, size_t epoch, const uint8_t *_src
 
     do {
         state.frame_type = *state.src++;
+        if (state.frame_type != 0)
+            fprintf(stderr, "%s: epoch: %ld permitted: %d num_frames: %ld frame_type:%ld \n",
+                    __FUNCTION__,
+                    epoch, frame_handlers[state.frame_type].permitted_epochs,
+                    num_frames, state.frame_type);
+
         if (state.frame_type >= sizeof(frame_handlers) / sizeof(frame_handlers[0])) {
+            perror("ERROR_FRAME_ENCODING");
             ret = QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
             break;
         }
         if ((frame_handlers[state.frame_type].permitted_epochs & (1 << epoch)) == 0) {
+            perror("ERROR_PROTOCOL_ENCODING");
             ret = QUICLY_TRANSPORT_ERROR_PROTOCOL_VIOLATION;
             break;
         }
         num_frames += 1;
+
         num_frames_ack_eliciting += frame_handlers[state.frame_type].ack_eliciting;
         if ((ret = (*frame_handlers[state.frame_type].cb)(conn, &state)) != 0)
             break;

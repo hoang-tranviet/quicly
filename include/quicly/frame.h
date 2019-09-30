@@ -405,7 +405,7 @@ inline int quicly_decode_datagram_frame(const uint8_t **src, const uint8_t *end,
     /* obtain data */
     if ((frame->flow_id = quicly_decodev(src, end)) == UINT64_MAX)
         return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
-    printf("%s: val = 0x%" PRIx64 "\n", __FUNCTION__, frame->flow_id);
+    fprintf(stderr, "%s: val = 0x%" PRIx64 "\n", __FUNCTION__, frame->flow_id);
     // frame->data = ptls_iovec_init(*src, end - *src);
     // *src = end;
     return 0;
@@ -464,7 +464,7 @@ inline uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t flow_id, uin
     if (len != 0)
         dst = quicly_encodev(dst, len);
     dst = quicly_encodev(dst, data);
-    printf( "%s \n", __FUNC__);
+    printf( "%s \n", __FUNCTION__);
     return dst;
 }
 
