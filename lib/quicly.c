@@ -3144,8 +3144,6 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                     goto Exit;
             }
 
-            s->dst = quicly_encode_datagram_frame(s->dst, 0, 0, 0);
-
             /* post-handshake messages */
             if ((conn->pending.flows & (uint8_t)(1 << QUICLY_EPOCH_1RTT)) != 0) {
                 quicly_stream_t *stream = quicly_get_stream(conn, -(1 + QUICLY_EPOCH_1RTT));
@@ -3154,6 +3152,9 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                     goto Exit;
                 resched_stream_data(stream);
             }
+
+            s->dst = quicly_encode_datagram_frame(s->dst, 0, 0, 0);
+
             /* respond to all pending received PATH_CHALLENGE frames */
             if (conn->egress.path_challenge.head != NULL) {
                 do {
