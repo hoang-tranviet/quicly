@@ -3160,7 +3160,9 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                     struct st_quicly_pending_path_challenge_t *c = conn->egress.path_challenge.head;
                     if ((ret = allocate_frame(conn, s, QUICLY_PATH_CHALLENGE_FRAME_CAPACITY)) != 0)
                         goto Exit;
-                    s->dst = quicly_encode_path_challenge_frame(s->dst, c->is_response, 2^63 - 1);
+                    uint64_t *max_u64=0;
+                    *max_u64 = UINT64_MAX;
+                    s->dst = quicly_encode_path_challenge_frame(s->dst, c->is_response, (uint8_t *)max_u64);
                     conn->egress.path_challenge.head = c->next;
                     free(c);
                 } while (conn->egress.path_challenge.head != NULL);
