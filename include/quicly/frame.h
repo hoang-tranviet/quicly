@@ -64,6 +64,8 @@ extern "C" {
 #define QUICLY_FRAME_TYPE_STREAM_BIT_LEN 0x2
 #define QUICLY_FRAME_TYPE_STREAM_BIT_FIN 0x1
 
+#define QUICLY_FRAME_TYPE_DATAGRAM_BIT_LEN 0x1
+
 #define QUICLY_MAX_DATA_FRAME_CAPACITY (1 + 8)
 #define QUICLY_MAX_STREAM_DATA_FRAME_CAPACITY (1 + 8 + 8)
 #define QUICLY_MAX_STREAMS_FRAME_CAPACITY (1 + 8)
@@ -104,7 +106,7 @@ typedef struct st_quicly_datagram_frame_t {
     ptls_iovec_t data;
 } quicly_datagram_frame_t;
 
-static int quicly_decode_datagram_frame(const uint8_t **src, const uint8_t *end, quicly_datagram_frame_t *frame);
+static int quicly_decode_datagram_frame(uint8_t type_flags, const uint8_t **src, const uint8_t *end, quicly_datagram_frame_t *frame);
 static int quicly_decode_stream_frame(uint8_t type_flags, const uint8_t **src, const uint8_t *end, quicly_stream_frame_t *frame);
 static uint8_t *quicly_encode_crypto_frame_header(uint8_t *dst, uint8_t *dst_end, uint64_t offset, size_t *data_len);
 static int quicly_decode_crypto_frame(const uint8_t **src, const uint8_t *end, quicly_stream_frame_t *frame);
@@ -400,15 +402,26 @@ Error:
     return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
 }
 
-inline int quicly_decode_datagram_frame(const uint8_t **src, const uint8_t *end, quicly_datagram_frame_t *frame)
+inline int quicly_decode_datagram_frame(uint8_t type_flags, const uint8_t **src, const uint8_t *end, quicly_datagram_frame_t *frame)
 {
     /* obtain data */
-    if ((frame->flow_id = quicly_decodev(src, end)) == UINT64_MAX)
-        return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
-    fprintf(stderr, "%s: val = 0x%" PRIx64 "\n", __FUNCTION__, frame->flow_id);
-    // frame->data = ptls_iovec_init(*src, end - *src);
-    // *src = end;
+    if ((type_flags & QUICLY_FRAME_TYPE_DATAGRAM_BIT_LEN) != 0) {
+        uint64_t len;
+        if ((len = quicly_decodev(src, end)) == UINT64_MAX)
+            goto Error;
+        if ((uint64_t)(end - *src) < len)
+            goto Error;
+        frame->data = ptls_iovec_init(*src, len);
+        *src += len;
+    } else {
+        frame->data = ptls_iovec_init(*src, end - *src);
+        *src = end;
+    }
+    fprintf(stderr, "%s: payload len = %" PRIu64 "\n", __FUNCTION__, frame->data.len);
+
     return 0;
+Error:
+    return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
 }
 
 inline uint8_t *quicly_encode_crypto_frame_header(uint8_t *dst, uint8_t *dst_end, uint64_t offset, size_t *data_len)
