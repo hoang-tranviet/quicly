@@ -67,7 +67,7 @@ void quicly_sendbuf_shift(quicly_stream_t *stream, quicly_sendbuf_t *sb, size_t 
     quicly_stream_sync_sendbuf(stream, 0);
 }
 
-int quicly_sendbuf_emit(quicly_stream_t *stream, quicly_sendbuf_t *sb, size_t off, void *dst, size_t *len, int *wrote_all)
+int quicly_sendbuf_emit(quicly_sendbuf_t *sb, size_t off, void *dst, size_t *len, int *wrote_all)
 {
     size_t vec_index, capacity = *len;
     int ret;
@@ -223,7 +223,7 @@ void quicly_streambuf_destroy(quicly_stream_t *stream, int err)
 int quicly_streambuf_egress_emit(quicly_stream_t *stream, size_t off, void *dst, size_t *len, int *wrote_all)
 {
     quicly_streambuf_t *sbuf = stream->data;
-    return quicly_sendbuf_emit(stream, &sbuf->egress, off, dst, len, wrote_all);
+    return quicly_sendbuf_emit(&sbuf->egress, off, dst, len, wrote_all);
 }
 
 int quicly_streambuf_egress_shutdown(quicly_stream_t *stream)
