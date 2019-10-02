@@ -87,7 +87,7 @@ void quicly_sendbuf_shift(quicly_stream_t *stream, quicly_sendbuf_t *sb, size_t 
 /**
  * The concrete function for `quicly_stream_callbacks_t::on_send_emit`.
  */
-int quicly_sendbuf_emit(quicly_stream_t *stream, quicly_sendbuf_t *sb, size_t off, void *dst, size_t *len, int *wrote_all);
+int quicly_sendbuf_emit(quicly_sendbuf_t *sb, size_t off, void *dst, size_t *len, int *wrote_all);
 /**
  * Appends some bytes to the send buffer.  The data being appended is copied.
  */
