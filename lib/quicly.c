@@ -3466,8 +3466,7 @@ static int handle_datagram_frame(quicly_conn_t *conn, struct st_quicly_handle_pa
 
     fprintf(stderr, "%s \n", __FUNCTION__);
 
- // if ((ret = quicly_decode_datagram_frame(state->frame_type, &state->src, state->end, &frame)) != 0)
-    if ((ret = quicly_decode_datagram_frame(&state->src, state->end, &frame)) != 0)
+    if ((ret = quicly_decode_datagram_frame(state->frame_type, &state->src, state->end, &frame)) != 0)
         return ret;
     return 0;
 }
