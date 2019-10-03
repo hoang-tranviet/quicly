@@ -552,6 +552,25 @@ struct st_quicly_stream_t {
     } _recv_aux;
 };
 
+typedef struct st_quicly_flow_t quicly_flow_t;
+
+/* Inspired from quicly_stream_callbacks_t */
+typedef struct st_quicly_flow_callbacks_t {
+    void (*on_destroy)(quicly_flow_t *flow, int err);
+    void (*on_send_shift)(quicly_flow_t *flow, size_t delta);
+    int (*on_send_emit)(quicly_flow_t *flow, size_t off, void *dst, size_t *len, int *wrote_all);
+    int (*on_send_stop)(quicly_flow_t *flow, int err);
+    int (*on_receive)(quicly_flow_t *flow, size_t off, const void *src, size_t len);
+    int (*on_receive_reset)(quicly_flow_t *flow, int err);
+} quicly_flow_callbacks_t;
+
+/* Inspired from quicly_stream_t */
+struct st_quicly_flow_t {
+    quicly_conn_t *conn;
+    const quicly_flow_callbacks_t *callbacks;
+};
+
+
 typedef struct st_quicly_decoded_packet_t {
     /**
      * octets of the entire packet
