@@ -111,7 +111,7 @@ static int quicly_decode_stream_frame(uint8_t type_flags, const uint8_t **src, c
 static uint8_t *quicly_encode_crypto_frame_header(uint8_t *dst, uint8_t *dst_end, uint64_t offset, size_t *data_len);
 static int quicly_decode_crypto_frame(const uint8_t **src, const uint8_t *end, quicly_stream_frame_t *frame);
 
-static uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t flow_id, uint64_t len, uint64_t data);
+static uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t len);
 static uint8_t *quicly_encode_rst_stream_frame(uint8_t *dst, uint64_t stream_id, uint16_t app_error_code, uint64_t final_offset);
 
 typedef struct st_quicly_rst_stream_frame_t {
@@ -469,15 +469,42 @@ Error:
     return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
 }
 
-inline uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t flow_id, uint64_t len, uint64_t data)
+inline void quicly_fill_datagram_payload(uint8_t *dst, size_t len)
 {
-    *dst++ = QUICLY_FRAME_TYPE_DATAGRAM;
-    if (flow_id != 0)
-        dst = quicly_encodev(dst, flow_id);
-    if (len != 0)
+    char *buffer;
+    size_t bufsize = 10;  /* to fit a QUIC packet */
+    size_t characters;
+
+    buffer = (char *)malloc(bufsize * sizeof(char));
+    if( buffer == NULL)
+    {
+        perror("Unable to allocate buffer");
+        exit(1);
+    }
+
+    printf("Type something: ");
+    characters = getline(&buffer,&bufsize,stdin);
+
+    if (len != 0 && characters > len)
+        characters = len;
+    printf("%zu characters were read.\n",characters);
+    printf("You typed: '%s'\n",buffer);
+
+    memcpy(dst, buffer, characters);
+
+    dst = (uint8_t *)dst + characters;
+}
+
+inline uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t len)
+{
+    if (len) {
+        *dst++ = QUICLY_FRAME_TYPE_DATAGRAM|QUICLY_FRAME_TYPE_DATAGRAM_BIT_LEN;
         dst = quicly_encodev(dst, len);
-    dst = quicly_encodev(dst, data);
-    printf( "%s \n", __FUNCTION__);
+    } else
+        *dst++ = QUICLY_FRAME_TYPE_DATAGRAM;
+
+    quicly_fill_datagram_payload(dst, (size_t) len);
+
     return dst;
 }
 

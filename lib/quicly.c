@@ -2431,6 +2431,15 @@ int quicly_can_send_stream_data(quicly_conn_t *conn, quicly_send_context_t *s)
     return s->num_packets < s->max_packets;
 }
 
+/* Fills datagrams, packet is actually sent later in commit_send_packet() */
+int quicly_send_datagrams(quicly_send_context_t *s)
+{
+    /* TODO: add a for loop here to encode multiple frames
+     * This may be needed if we have multiple flows with small frames */
+    s->dst = quicly_encode_datagram_frame(s->dst, 0);
+    return 0;
+}
+
 int quicly_send_stream(quicly_stream_t *stream, quicly_send_context_t *s)
 {
     uint64_t off = stream->sendstate.pending.ranges[0].start, end_off;
@@ -3165,7 +3174,7 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                 resched_stream_data(stream);
             }
 
-            s->dst = quicly_encode_datagram_frame(s->dst, 0, 0, 0);
+            quicly_send_datagrams(s);
 
             /* respond to all pending received PATH_CHALLENGE frames */
             if (conn->egress.path_challenge.head != NULL) {
