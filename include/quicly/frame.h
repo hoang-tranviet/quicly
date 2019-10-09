@@ -469,7 +469,7 @@ Error:
     return QUICLY_TRANSPORT_ERROR_FRAME_ENCODING;
 }
 
-inline void quicly_fill_datagram_payload(uint8_t *dst, size_t len)
+inline uint8_t *quicly_fill_datagram_payload(uint8_t *dst, size_t len)
 {
     char *buffer;
     size_t bufsize = 10;  /* to fit a QUIC packet */
@@ -488,11 +488,12 @@ inline void quicly_fill_datagram_payload(uint8_t *dst, size_t len)
     if (len != 0 && characters > len)
         characters = len;
     printf("%zu characters were read.\n",characters);
-    printf("You typed: '%s'\n",buffer);
+    printf("You typed: '%s'",buffer);
 
     memcpy(dst, buffer, characters);
 
     dst = (uint8_t *)dst + characters;
+    return dst;
 }
 
 inline uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t len)
@@ -503,7 +504,7 @@ inline uint8_t *quicly_encode_datagram_frame(uint8_t *dst, uint64_t len)
     } else
         *dst++ = QUICLY_FRAME_TYPE_DATAGRAM;
 
-    quicly_fill_datagram_payload(dst, (size_t) len);
+    dst = quicly_fill_datagram_payload(dst, (size_t) len);
 
     return dst;
 }
