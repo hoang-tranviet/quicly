@@ -2435,10 +2435,11 @@ int quicly_can_send_stream_data(quicly_conn_t *conn, quicly_send_context_t *s)
 /* Fills datagrams, packet is actually sent later in commit_send_packet() */
 int quicly_send_datagrams(quicly_conn_t *conn, quicly_send_context_t *s)
 {
-    printf("%ld %ld\n", s->target.packet->data.len, s->dst - s->target.packet->data.base);
+    uint64_t len = s->dst - s->target.packet->data.base;
+    printf("%ld %ld\n", s->target.packet->data.len, len);
 
     s->target.packet->data.len = s->dst - s->target.packet->data.base;
-    if (s->target.packet->data.len >= conn->super.ctx->max_packet_size - QUICLY_DATAGRAM_FRAME_CAPACITY) {
+    if (len >= conn->super.ctx->max_packet_size - QUICLY_DATAGRAM_FRAME_CAPACITY) {
         int ret;
         printf("not enough space for piggyback, preparing new packet\n");
         if ((ret = allocate_frame(conn, s, QUICLY_DATAGRAM_FRAME_CAPACITY)) != 0)
@@ -2447,7 +2448,12 @@ int quicly_send_datagrams(quicly_conn_t *conn, quicly_send_context_t *s)
     /* TODO: add a for loop here to encode multiple frames
      * This may be needed if we have multiple flows with small frames */
     s->dst = quicly_encode_datagram_frame(s->dst, 0);
-    printf("%ld %ld\n", s->target.packet->data.len, s->dst - s->target.packet->data.base);
+
+    uint64_t newlen = s->dst - s->target.packet->data.base;
+    printf("%ld %ld\n", s->target.packet->data.len, newlen);
+
+    QUICLY_PROBE(QUICTRACE_SEND_DATAGRAM, conn, probe_now(), newlen - len);
+
     return 0;
 }
 
