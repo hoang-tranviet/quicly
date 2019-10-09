@@ -2163,6 +2163,7 @@ static int commit_send_packet(quicly_conn_t *conn, quicly_send_context_t *s, int
     quicly_sentmap_commit(&conn->egress.sentmap, (uint16_t)packet_bytes_in_flight);
 
     s->target.packet->data.len = s->dst - s->target.packet->data.base;
+    printf("packet number=%ld, len %ld max %d\n", conn->egress.packet_number, s->target.packet->data.len, conn->super.ctx->max_packet_size);
     assert(s->target.packet->data.len <= conn->super.ctx->max_packet_size);
 
     QUICLY_PROBE(PACKET_COMMIT, conn, probe_now(), conn->egress.packet_number, s->dst - s->target.first_byte_at,
@@ -2431,11 +2432,21 @@ int quicly_can_send_stream_data(quicly_conn_t *conn, quicly_send_context_t *s)
 }
 
 /* Fills datagrams, packet is actually sent later in commit_send_packet() */
-int quicly_send_datagrams(quicly_send_context_t *s)
+int quicly_send_datagrams(quicly_conn_t *conn, quicly_send_context_t *s)
 {
+    printf("%ld %ld\n", s->target.packet->data.len, s->dst - s->target.packet->data.base);
+
+    s->target.packet->data.len = s->dst - s->target.packet->data.base;
+    if (s->target.packet->data.len >= conn->super.ctx->max_packet_size - QUICLY_DATAGRAM_FRAME_CAPACITY) {
+        int ret;
+        printf("not enough space for piggyback, preparing new packet\n");
+        if ((ret = allocate_frame(conn, s, QUICLY_DATAGRAM_FRAME_CAPACITY)) != 0)
+            return ret;
+    }
     /* TODO: add a for loop here to encode multiple frames
      * This may be needed if we have multiple flows with small frames */
     s->dst = quicly_encode_datagram_frame(s->dst, 0);
+    printf("%ld %ld\n", s->target.packet->data.len, s->dst - s->target.packet->data.base);
     return 0;
 }
 
@@ -3167,7 +3178,7 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                 resched_stream_data(stream);
             }
 
-            quicly_send_datagrams(s);
+            quicly_send_datagrams(conn, s);
 
             /* respond to all pending received PATH_CHALLENGE frames */
             if (conn->egress.path_challenge.head != NULL) {
