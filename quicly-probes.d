@@ -90,6 +90,7 @@ provider quicly {
     probe quictrace_recv(struct st_quicly_conn_t *conn, int64_t at, uint64_t pn);
     probe quictrace_send_stream(struct st_quicly_conn_t *conn, int64_t at, struct st_quicly_stream_t *stream, uint64_t off,
                                 size_t len, int fin);
+    probe quictrace_send_datagram(struct st_quicly_conn_t *conn, int64_t at, size_t len);
     probe quictrace_recv_stream(struct st_quicly_conn_t *conn, int64_t at, int64_t stream_id, uint64_t off, size_t len, int fin);
     probe quictrace_recv_ack(struct st_quicly_conn_t *conn, int64_t at, uint64_t ack_block_begin, uint64_t ack_block_end);
     probe quictrace_recv_ack_delay(struct st_quicly_conn_t *conn, int64_t at, int64_t ack_delay);
