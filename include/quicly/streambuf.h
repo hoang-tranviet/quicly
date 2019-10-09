@@ -48,6 +48,7 @@ typedef int (*quicly_sendbuf_flatten_vec_cb)(quicly_sendbuf_vec_t *vec, void *ds
  */
 typedef void (*quicly_sendbuf_discard_vec_cb)(quicly_sendbuf_vec_t *vec);
 
+/* TODO: Remove the `stream` from these names, since they will work with both stream and datagrams  */
 typedef struct st_quicly_streambuf_sendvec_callbacks_t {
     quicly_sendbuf_flatten_vec_cb flatten_vec;
     quicly_sendbuf_discard_vec_cb discard_vec;
