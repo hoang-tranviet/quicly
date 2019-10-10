@@ -162,7 +162,7 @@ static int quicly_decode_max_streams_frame(const uint8_t **src, const uint8_t *e
 
 #define QUICLY_PATH_CHALLENGE_DATA_LEN 8
 
-uint8_t *quicly_encode_path_challenge_frame(uint8_t *dst, int is_response, const uint8_t *data);
+uint8_t *quicly_encode_path_challenge_frame(uint8_t *dst, int is_response, const uint64_t data);
 
 typedef struct st_quicly_path_challenge_frame_t {
     const uint8_t *data;

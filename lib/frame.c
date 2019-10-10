@@ -23,10 +23,10 @@
 #include <string.h>
 #include "quicly/frame.h"
 
-uint8_t *quicly_encode_path_challenge_frame(uint8_t *dst, int is_response, const uint8_t *data)
+uint8_t *quicly_encode_path_challenge_frame(uint8_t *dst, int is_response, const uint64_t data)
 {
     *dst++ = is_response ? QUICLY_FRAME_TYPE_PATH_RESPONSE : QUICLY_FRAME_TYPE_PATH_CHALLENGE;
-    memcpy(dst, data, QUICLY_PATH_CHALLENGE_DATA_LEN);
+    memcpy(dst, &data, QUICLY_PATH_CHALLENGE_DATA_LEN);
     dst += QUICLY_PATH_CHALLENGE_DATA_LEN;
     return dst;
 }
