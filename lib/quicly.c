@@ -59,6 +59,7 @@
 #define QUICLY_TRANSPORT_PARAMETER_ID_MAX_ACK_DELAY 11
 #define QUICLY_TRANSPORT_PARAMETER_ID_DISABLE_ACTIVE_MIGRATION 12
 #define QUICLY_TRANSPORT_PARAMETER_ID_PREFERRED_ADDRESS 13
+#define QUICLY_TRANSPORT_PARAMETER_ID_MAX_DATAGRAM_FRAME_SIZE 0x20
 
 #define QUICLY_EPOCH_INITIAL 0
 #define QUICLY_EPOCH_0RTT 1
@@ -349,7 +350,7 @@ static int update_traffic_key_cb(ptls_update_traffic_key_t *self, ptls_t *tls, i
 static int discard_sentmap_by_epoch(quicly_conn_t *conn, unsigned ack_epochs);
 
 static const quicly_transport_parameters_t default_transport_params = {
-    {0, 0, 0}, 0, 0, 0, 0, QUICLY_DEFAULT_ACK_DELAY_EXPONENT, QUICLY_DEFAULT_MAX_ACK_DELAY};
+    {0, 0, 0}, 0, 0, 0, 0, QUICLY_DEFAULT_ACK_DELAY_EXPONENT, QUICLY_DEFAULT_MAX_ACK_DELAY, 0, 0};
 
 static __thread int64_t now;
 
@@ -1419,6 +1420,9 @@ int quicly_encode_transport_parameter_list(ptls_buffer_t *buf, int is_client, co
                 buf->off += QUICLY_MAX_PACKET_SIZE;
             });
         }
+        if (params->max_datagram_frame_size != 0)
+            PUSH_TRANSPORT_PARAMETER(buf, QUICLY_TRANSPORT_PARAMETER_ID_MAX_DATAGRAM_FRAME_SIZE,
+                                     { pushv(buf, params->max_datagram_frame_size); });
     });
 #undef pushv
 
@@ -1523,6 +1527,10 @@ int quicly_decode_transport_parameter_list(quicly_transport_parameters_t *params
                 } break;
                 case QUICLY_TRANSPORT_PARAMETER_ID_DISABLE_ACTIVE_MIGRATION:
                     params->disable_active_migration = 1;
+                    break;
+                case QUICLY_TRANSPORT_PARAMETER_ID_MAX_DATAGRAM_FRAME_SIZE:
+                    if ((ret = quicly_tls_decode_varint(&params->max_datagram_frame_size, &src, end)) != 0)
+                        goto Exit;
                     break;
                 default:
                     src = end;
@@ -3347,7 +3355,9 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                 resched_stream_data(stream);
             }
 
-            quicly_send_datagrams(conn, s);
+            /* TODO: check if we already sent our transport_params */
+            if (conn->super.peer.transport_params.max_datagram_frame_size != 0)
+                quicly_send_datagrams(conn, s);
 
             /* respond to all pending received PATH_CHALLENGE frames */
             if (conn->egress.path_challenge.head != NULL) {
