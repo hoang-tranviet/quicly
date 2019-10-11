@@ -198,6 +198,10 @@ typedef struct st_quicly_transport_parameters_t {
      *
      */
     uint8_t disable_active_migration : 1;
+    /**
+     * Frame size (header + payload)
+     */
+    uint64_t max_datagram_frame_size;
 } quicly_transport_parameters_t;
 
 struct st_quicly_cid_t {
@@ -387,6 +391,8 @@ struct _st_quicly_conn_public_t {
          */
         quicly_cid_t offered_cid;
         struct st_quicly_conn_streamgroup_state_t bidi, uni;
+        /* zero if datagram mode is disabled */
+        uint64_t max_datagram_frame_size;
     } host;
     struct {
         /**
@@ -410,6 +416,8 @@ struct _st_quicly_conn_public_t {
             unsigned validated : 1;
             unsigned send_probe : 1;
         } address_validation;
+        /* zero if datagram mode is disabled */
+        uint64_t max_datagram_frame_size;
     } peer;
     struct st_quicly_default_scheduler_state_t _default_scheduler;
     struct {
