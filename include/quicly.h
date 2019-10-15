@@ -73,6 +73,7 @@ typedef struct st_quicly_cid_t quicly_cid_t;
 typedef struct st_quicly_cid_plaintext_t quicly_cid_plaintext_t;
 typedef struct st_quicly_context_t quicly_context_t;
 typedef struct st_quicly_conn_t quicly_conn_t;
+typedef struct st_quicly_path_t quicly_path_t;
 typedef struct st_quicly_stream_t quicly_stream_t;
 typedef struct st_quicly_send_context_t quicly_send_context_t;
 typedef struct st_quicly_address_token_plaintext_t quicly_address_token_plaintext_t;
@@ -323,6 +324,20 @@ typedef enum {
     QUICLY_STATE_DRAINING
 } quicly_state_t;
 
+/**
+ * path state
+ */
+typedef enum {
+    QUICLY_PATH_READY,     /* after sending or receiving a first NEW_CONNECTION_ID
+                             * with an associated Path ID */
+    QUICLY_PATH_ACTIVE,    /* path usage or PATH_UPDATE or 4-tuple validated */
+
+    QUICLY_PATH_DISABLED,  /* after reception or sending of REMOVE_ADDRESS */
+
+    QUICLY_PATH_CLOSED,    /* after sending or receiving PATH_UPDATE */
+} quicly_path_state_t;
+
+
 struct st_quicly_conn_streamgroup_state_t {
     uint32_t num_streams;
     quicly_stream_id_t next_stream_id;
@@ -433,6 +448,52 @@ struct _st_quicly_conn_public_t {
     uint32_t version;
     void *data;
 };
+
+struct st_quicly_path_t {
+    quicly_conn_t *conn;
+    uint64_t packet_number;
+
+    int sending_side;   /* bool */
+    uint64_t path_id;
+    quicly_path_state_t state;
+
+    struct {
+        uint8_t address_id;
+        /**
+         * the local address (may be AF_UNSPEC)
+         */
+        quicly_address_t address;
+
+        quicly_cid_t pcid;      /* TODO: support multiple PCIDs per path */
+        uint64_t sequence;
+
+        struct st_quicly_conn_streamgroup_state_t bidi, uni;
+    } host;
+
+    struct {
+        uint8_t address_id;
+        /**
+         * the remote address (cannot be AF_UNSPEC)
+         */
+        quicly_address_t address;
+
+        quicly_cid_t pcid;      /* TODO: support multiple PCIDs per path */
+        uint64_t sequence;
+
+        struct st_quicly_conn_streamgroup_state_t bidi, uni;
+        struct {
+            unsigned validated : 1;
+            unsigned send_probe : 1;
+        } address_validation;
+    } peer;
+
+    struct st_quicly_default_scheduler_state_t _default_scheduler;
+    struct {
+        QUICLY_STATS_PREBUILT_FIELDS;
+    } stats;
+    void *data;
+};
+
 
 typedef enum {
     /**
@@ -704,6 +765,10 @@ static quicly_state_t quicly_get_state(quicly_conn_t *conn);
  *
  */
 int quicly_connection_is_ready(quicly_conn_t *conn);
+/**
+ * Send NEW_CONNECTION_ID frame with new pathID
+ */
+int quicly_send_new_cid_new_path(quicly_conn_t *conn, quicly_send_context_t *s);
 /**
  *
  */

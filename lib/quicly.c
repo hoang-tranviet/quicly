@@ -167,6 +167,7 @@ struct st_quicly_application_space_t {
 
 struct st_quicly_conn_t {
     struct _st_quicly_conn_public_t super;
+    int mp_capable;
     /**
      * the initial context
      */
@@ -179,6 +180,10 @@ struct st_quicly_conn_t {
      * 0-RTT and 1-RTT context
      */
     struct st_quicly_application_space_t *application;
+    /**
+     * list of paths, may change to hashtable as streams below for better scalability
+     */
+    quicly_linklist_t paths;
     /**
      * hashtable of streams
      */
@@ -585,6 +590,34 @@ static int update_max_streams(struct st_quicly_max_streams_t *m, uint64_t count)
 int quicly_connection_is_ready(quicly_conn_t *conn)
 {
     return conn->application != NULL;
+}
+
+static quicly_path_t *quicly_new_path(quicly_conn_t *conn, uint64_t path_id,
+                                      quicly_cid_t pcid, uint64_t sequence,
+                                      int sending_side, quicly_path_state_t state)
+{
+    quicly_path_t *path;
+
+    if ((path = malloc(sizeof(quicly_path_t))) == NULL)
+        return NULL;
+
+    path->conn = conn;
+    path->sending_side = sending_side;
+    path->path_id = path_id;
+    path->state = state;
+
+    if (sending_side == 0) {
+        /* if we set up receiving path, host is sending the NEW_CID frame
+         * yeah, it is non-intuitive */
+        path->host.pcid = pcid;
+        path->host.sequence = sequence;
+    } else {
+        /* if we set up sending path, host is receiving the NEW_CID frame */
+        path->peer.pcid = pcid;
+        path->peer.sequence = sequence;
+    }
+
+    return path;
 }
 
 static int stream_is_destroyable(quicly_stream_t *stream)
@@ -2330,6 +2363,30 @@ static int allocate_ack_eliciting_frame(quicly_conn_t *conn, quicly_send_context
     return ret;
 }
 
+int quicly_send_new_cid_new_path(quicly_conn_t *conn, quicly_send_context_t *s)
+{
+    uint64_t path_id = 1;
+    uint64_t sequence = 1;
+    int sending_side = 0;
+    int state = QUICLY_PATH_ACTIVE;
+    uint64_t retire_prior_to = 0;
+
+    quicly_cid_t  pcid = conn->super.host.src_cid; // TODO: generate a new pcid for the path
+    quicly_new_path(conn, path_id, pcid, sequence, sending_side, state);
+
+    ptls_iovec_t pcid_vec, token;
+
+    pcid_vec.base = pcid.cid;
+    pcid_vec.len  = pcid.len;
+
+    token.base = conn->super.host.stateless_reset_token;
+    token.len = QUICLY_STATELESS_RESET_TOKEN_LEN;
+
+    s->dst = quicly_encode_new_connection_id_frame(s->dst, path_id, sequence, retire_prior_to, pcid_vec, token);
+
+    return 0;
+}
+
 static int send_ack(quicly_conn_t *conn, struct st_quicly_pn_space_t *space, quicly_send_context_t *s)
 {
     uint64_t ack_delay;
@@ -3217,6 +3274,9 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                 } while (conn->egress.path_challenge.head != NULL);
                 conn->egress.path_challenge.tail_ref = &conn->egress.path_challenge.head;
             }
+            // if (conn->new_conns == 0)
+                quicly_send_new_cid_new_path(conn, s);
+
             /* send max_streams frames */
             if ((ret = send_max_streams(conn, 1, s)) != 0)
                 goto Exit;
@@ -4002,7 +4062,28 @@ static int handle_dummy_frame(quicly_conn_t *conn, struct st_quicly_handle_paylo
 static int handle_new_connection_id_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)
 {
     quicly_new_connection_id_frame_t frame;
-    return quicly_decode_new_connection_id_frame(&state->src, state->end, &frame);
+    int ret = quicly_decode_new_connection_id_frame(&state->src, state->end, &frame, 1);
+    if (ret != 0) {
+        printf("decode_new_connection_id_frame failed \n");
+        return ret;
+    }
+    /* convert from ptls_iovec_t to quicly_cid_t */
+    quicly_cid_t pcid;
+    memcpy(pcid.cid, frame.cid.base, frame.cid.len);
+    pcid.len = frame.cid.len;
+
+    if (frame.path_id > 0) {
+        /* should we manually assign fields instead? */
+        quicly_path_t *path = quicly_new_path(conn,
+                                  frame.path_id,
+                                  pcid,
+                                  frame.sequence,
+                                  1,
+                                  QUICLY_PATH_READY);
+        if (path == NULL)
+            ret = QUICLY_ERROR_MALLOC;
+    }
+    return 0;
 }
 
 static int handle_retire_connection_id_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)

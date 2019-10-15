@@ -196,13 +196,16 @@ typedef struct st_quicly_streams_blocked_frame_t {
 static int quicly_decode_streams_blocked_frame(const uint8_t **src, const uint8_t *end, quicly_streams_blocked_frame_t *frame);
 
 typedef struct st_quicly_new_connection_id_frame_t {
+    uint64_t path_id;
     uint64_t sequence;
     uint64_t retire_prior_to;
     ptls_iovec_t cid;
     const uint8_t *stateless_reset_token;
 } quicly_new_connection_id_frame_t;
 
-static int quicly_decode_new_connection_id_frame(const uint8_t **src, const uint8_t *end, quicly_new_connection_id_frame_t *frame);
+static uint8_t *quicly_encode_new_connection_id_frame(uint8_t *dst, uint64_t path_id, uint64_t sequence, uint64_t retire_prior_to,
+                                                    ptls_iovec_t cid, ptls_iovec_t token);
+static int quicly_decode_new_connection_id_frame(const uint8_t **src, const uint8_t *end, quicly_new_connection_id_frame_t *frame, int mp_capable);
 
 static uint8_t *quicly_encode_stop_sending_frame(uint8_t *dst, uint64_t stream_id, uint16_t app_error_code);
 
@@ -665,8 +668,27 @@ inline int quicly_decode_streams_blocked_frame(const uint8_t **src, const uint8_
     return 0;
 }
 
-inline int quicly_decode_new_connection_id_frame(const uint8_t **src, const uint8_t *end, quicly_new_connection_id_frame_t *frame)
+inline uint8_t *quicly_encode_new_connection_id_frame(uint8_t *dst, uint64_t path_id, uint64_t sequence, uint64_t retire_prior_to,
+                                               ptls_iovec_t cid, ptls_iovec_t token)
 {
+    *dst++ = QUICLY_FRAME_TYPE_NEW_CONNECTION_ID;
+    dst = quicly_encodev(dst, path_id);
+    dst = quicly_encodev(dst, sequence);
+    dst = quicly_encodev(dst, retire_prior_to);
+    dst = quicly_encodev(dst, cid.len);
+    memcpy(dst, cid.base, cid.len);
+    dst += cid.len;
+    memcpy(dst, token.base, token.len);
+    dst += token.len;
+
+    return dst;
+}
+
+inline int quicly_decode_new_connection_id_frame(const uint8_t **src, const uint8_t *end, quicly_new_connection_id_frame_t *frame, int mp_capable)
+{
+    // if (mp_capable == 1)
+        if ((frame->path_id = quicly_decodev(src, end)) == UINT64_MAX)
+            goto Fail;
     /* sequence */
     if ((frame->sequence = quicly_decodev(src, end)) == UINT64_MAX)
         goto Fail;
