@@ -2622,6 +2622,10 @@ int quicly_send_new_cid_new_path(quicly_conn_t *conn, quicly_send_context_t *s)
     if ((ret = allocate_frame(conn, s, QUICLY_NEW_CONNECTION_ID_FRAME_CAPACITY)) != 0)
         return ret;
 
+    QUICLY_PROBE(NEW_CID_SEND, conn, probe_now(), path_id,
+                 QUICLY_PROBE_HEXDUMP(src_cid.cid, src_cid.len), retire_prior_to,
+                 QUICLY_PROBE_HEXDUMP(token.base, QUICLY_STATELESS_RESET_TOKEN_LEN));
+
     s->dst = quicly_encode_new_connection_id_frame(s->dst, path_id, retire_prior_to, pcid_vec, token);
 
     return 0;
@@ -4321,6 +4325,10 @@ static int handle_new_connection_id_frame(quicly_conn_t *conn, struct st_quicly_
         printf("decode_new_connection_id_frame failed \n");
         return ret;
     }
+    QUICLY_PROBE(NEW_CID_RECEIVE, conn, probe_now(), frame.sequence,
+                 QUICLY_PROBE_HEXDUMP(frame.cid.base, frame.cid.len), frame.retire_prior_to,
+                 QUICLY_PROBE_HEXDUMP(frame.stateless_reset_token, QUICLY_STATELESS_RESET_TOKEN_LEN));
+
     /* for multipath, frame.sequence is the path id */
     if (frame.sequence >= 0 &&
         frame.sequence < conn->num_snd_paths) {

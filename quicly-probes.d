@@ -75,6 +75,9 @@ provider quicly {
     probe max_stream_data_send(struct st_quicly_conn_t *conn, int64_t at, struct st_quicly_stream_t *stream, uint64_t limit);
     probe max_stream_data_receive(struct st_quicly_conn_t *conn, int64_t at, int64_t stream_id, uint64_t limit);
 
+    probe new_cid_send(struct st_quicly_conn_t *conn, int64_t at, uint8_t seq, const char *pcid, uint64_t retire_prior_to, const char *token);
+    probe new_cid_receive(struct st_quicly_conn_t *conn, int64_t at, uint8_t seq, const char *pcid, uint64_t retire_prior_to, const char *token);
+
     probe new_token_send(struct st_quicly_conn_t *conn, int64_t at, uint8_t *token, size_t len, uint64_t generation);
     probe new_token_acked(struct st_quicly_conn_t *conn, int64_t at, uint64_t generation);
     probe new_token_receive(struct st_quicly_conn_t *conn, int64_t at, uint8_t *token, size_t len);
