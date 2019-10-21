@@ -243,6 +243,22 @@ static int quicly_decode_new_token_frame(const uint8_t **src, const uint8_t *end
 int quicly_tls_push_varint(ptls_buffer_t *buf, uint64_t v);
 int quicly_tls_decode_varint(uint64_t *value, const uint8_t **src, const uint8_t *end);
 
+static void print_hexdump(const char *title, const uint8_t *p, size_t l)
+{
+    fprintf(stderr, "%s (%zu bytes):\n", title, l);
+
+    while (l != 0) {
+        int i;
+        fputs("   ", stderr);
+        for (i = 0; i < 16; ++i) {
+            fprintf(stderr, " %02x", *p++);
+            if (--l == 0)
+                break;
+        }
+        fputc('\n', stderr);
+    }
+}
+
 /* inline definitions */
 
 inline uint16_t quicly_decode16(const uint8_t **src)
@@ -678,6 +694,7 @@ inline uint8_t *quicly_encode_new_connection_id_frame(uint8_t *dst, uint64_t pat
     dst = quicly_encodev(dst, retire_prior_to);
     dst = quicly_encodev(dst, cid.len);
     memcpy(dst, cid.base, cid.len);
+    print_hexdump("quicly_encode_new_connection_id_frame pcid", dst, cid.len);
     dst += cid.len;
     memcpy(dst, token.base, token.len);
     dst += token.len;
@@ -700,6 +717,7 @@ inline int quicly_decode_new_connection_id_frame(const uint8_t **src, const uint
 
     { /* cid */
         uint8_t cid_len = *(*src)++;
+        print_hexdump("quicly_decode_new_connection_id_frame pcid", *src, cid_len);
         if (cid_len == 0) {
             frame->cid = ptls_iovec_init(NULL, 0);
         } else if (4 <= cid_len && cid_len <= 18) {
