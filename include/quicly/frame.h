@@ -680,7 +680,7 @@ inline int quicly_decode_new_connection_id_frame(const uint8_t **src, const uint
         if (cid_len == 0) {
             frame->cid = ptls_iovec_init(NULL, 0);
         } else if (4 <= cid_len && cid_len <= 18) {
-            frame->cid = ptls_iovec_init(src, cid_len);
+            frame->cid = ptls_iovec_init(*src, cid_len);
             *src += cid_len;
         } else {
             goto Fail;
