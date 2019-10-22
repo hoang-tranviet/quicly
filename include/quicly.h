@@ -487,6 +487,33 @@ struct st_quicly_path_t {
         } address_validation;
     } peer;
 
+    struct {
+        /* contains actions that needs to be performed when an ack is being received */
+        quicly_sentmap_t sentmap;
+        /* all packets where pn < max_lost_pn are deemed lost */
+        uint64_t max_lost_pn;
+        /* loss recovery */
+        quicly_loss_t loss;
+        /* next or the currently encoding packet number (TODO move to pnspace) */
+        uint64_t packet_number;
+
+        struct {
+            struct st_quicly_pending_path_challenge_t *head, **tail_ref;
+        } path_challenge;
+
+        struct {
+            uint64_t generation;
+            uint64_t max_acked;
+            uint32_t num_inflight;
+        } new_token;
+
+        int64_t last_retransmittable_sent_at;
+        /* when to send an ACK, or other frames used for managing the connection */
+        int64_t send_ack_at;
+
+        quicly_cc_t cc;
+    } egress;
+
     struct st_quicly_default_scheduler_state_t _default_scheduler;
     struct {
         QUICLY_STATS_PREBUILT_FIELDS;
