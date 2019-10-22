@@ -165,6 +165,7 @@ static size_t default_decrypt_cid(quicly_cid_encryptor_t *_self, quicly_cid_plai
     const uint8_t *p;
     size_t cid_len;
 
+    /* 64 bit by default */
     cid_len = self->cid_decrypt_ctx->algo->block_size;
 
     /* normalize the input, so that we would get consistent routing */
