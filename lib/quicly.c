@@ -2163,6 +2163,8 @@ struct st_quicly_send_context_t {
     size_t max_packets;
     /* number of datagrams currently stored in |packets| */
     size_t num_packets;
+    /* index of outgoing path. Determined by packet scheduler */
+    uint8_t out_path;
     /* the currently available window for sending (in bytes) */
     ssize_t send_window;
     /* location where next frame should be written */
@@ -2262,6 +2264,15 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
 {
     int coalescible, ret;
 
+    quicly_path_t *path;
+    if (conn->num_snd_paths > 1) {
+        /* choose the newest path
+         * TODO: Replace by a modular scheduler */
+        path = conn->snd_path[conn->num_snd_paths-1];
+        if (path == NULL)
+            printf("send path %d is null!\n", conn->num_snd_paths-1);
+    }
+
     assert((s->current.first_byte & QUICLY_QUIC_BIT) != 0);
 
     /* allocate and setup the new packet if necessary */
@@ -2318,13 +2329,19 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
     }
     s->target.ack_eliciting = 0;
 
-    QUICLY_PROBE(PACKET_PREPARE, conn, probe_now(), s->current.first_byte,
-                 QUICLY_PROBE_HEXDUMP(conn->super.peer.cid.cid, conn->super.peer.cid.len));
+    if (conn->num_snd_paths > 1 && path != NULL)
+        QUICLY_PROBE(PACKET_PREPARE, conn, probe_now(), s->current.first_byte,
+                     QUICLY_PROBE_HEXDUMP(path->peer.pcid.cid, path->peer.pcid.len));
+    else
+        QUICLY_PROBE(PACKET_PREPARE, conn, probe_now(), s->current.first_byte,
+                     QUICLY_PROBE_HEXDUMP(conn->super.peer.cid.cid, conn->super.peer.cid.len));
 
     /* emit header */
     s->target.first_byte_at = s->dst;
     *s->dst++ = s->current.first_byte | 0x1 /* pnlen == 2 */;
     if (QUICLY_PACKET_IS_LONG_HEADER(s->current.first_byte)) {
+        if (conn->num_snd_paths > 1)
+            printf("wtf? multipath available with long header? \n");
         s->dst = quicly_encode32(s->dst, conn->super.version);
         *s->dst++ = conn->super.peer.cid.len;
         s->dst = emit_cid(s->dst, &conn->super.peer.cid);
@@ -2341,7 +2358,10 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
         *s->dst++ = 0;
         *s->dst++ = 0;
     } else {
-        s->dst = emit_cid(s->dst, &conn->super.peer.cid);
+        if (conn->num_snd_paths > 1 && path != NULL)
+            s->dst = emit_cid(s->dst, &path->peer.pcid);
+        else
+            s->dst = emit_cid(s->dst, &conn->super.peer.cid);
     }
     s->dst += QUICLY_SEND_PN_SIZE; /* space for PN bits, filled in at commit time */
     s->dst_payload_from = s->dst;
@@ -3383,6 +3403,7 @@ Exit:
 int quicly_send(quicly_conn_t *conn, quicly_datagram_t **packets, size_t *num_packets)
 {
     quicly_send_context_t s = {{NULL, -1}, {NULL, NULL, NULL}, packets, *num_packets};
+    s.out_path = 0; /* the initial path */
     int ret;
 
     update_now(conn->super.ctx);
