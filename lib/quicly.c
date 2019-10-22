@@ -195,6 +195,7 @@ struct st_quicly_conn_t {
      *
      */
     struct {
+        uint8_t path;
         /**
          *
          */
@@ -4024,6 +4025,31 @@ static int is_stateless_reset(quicly_conn_t *conn, quicly_decoded_packet_t *deco
     return 1;
 }
 
+int quicly_lookup_path(quicly_conn_t *conn, struct sockaddr *dest_addr, struct sockaddr *src_addr,
+                          quicly_decoded_packet_t *decoded)
+{
+    int i;
+    /* start from path 1, ignore path 0 */
+    for (i = 1; i < conn->num_rcv_paths; ++i)
+        if (conn->super.ctx->cid_encryptor != NULL) {
+            if (quicly_cid_is_equal(&conn->rcv_path[i]->host.pcid, decoded->cid.dest.encrypted))
+                goto Found;
+            if (is_stateless_reset(conn, decoded))
+                goto Found_StatelessReset;
+        }
+    /* not found */
+    return 0;
+
+Found:
+    conn->ingress.path = i;
+    decoded->_is_stateless_reset_cached = QUICLY__DECODED_PACKET_CACHED_NOT_STATELESS_RESET;
+    return 1;
+
+Found_StatelessReset:
+    decoded->_is_stateless_reset_cached = QUICLY__DECODED_PACKET_CACHED_IS_STATELESS_RESET;
+    return 1;
+}
+
 int quicly_is_destination(quicly_conn_t *conn, struct sockaddr *dest_addr, struct sockaddr *src_addr,
                           quicly_decoded_packet_t *decoded)
 {
@@ -4056,14 +4082,16 @@ int quicly_is_destination(quicly_conn_t *conn, struct sockaddr *dest_addr, struc
             return 0;
     }
 
-    /* not found */
-    return 0;
+    /* not found, check if it match any non-initial path */
+    return quicly_lookup_path(conn, dest_addr, src_addr, decoded);
 
 Found:
+    conn->ingress.path = quicly_lookup_path(conn, dest_addr, src_addr, decoded);
     decoded->_is_stateless_reset_cached = QUICLY__DECODED_PACKET_CACHED_NOT_STATELESS_RESET;
     return 1;
 
 Found_StatelessReset:
+    conn->ingress.path = 0; /* receive pkt on path 0 */
     decoded->_is_stateless_reset_cached = QUICLY__DECODED_PACKET_CACHED_IS_STATELESS_RESET;
     return 1;
 }
