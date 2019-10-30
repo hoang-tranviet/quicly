@@ -174,6 +174,7 @@ struct st_quicly_application_space_t {
 
 struct st_quicly_conn_t {
     struct _st_quicly_conn_public_t super;
+    quicly_path_t *path;
     /**
      * the initial context
      */
@@ -186,6 +187,13 @@ struct st_quicly_conn_t {
      * 0-RTT and 1-RTT context
      */
     struct st_quicly_application_space_t *application;
+    /**
+     * list of paths. (TODO: change to dynamic list like picoquic does)
+     */
+    quicly_path_t *snd_path[UINT8_MAX];
+    quicly_path_t *rcv_path[UINT8_MAX];
+    uint8_t num_snd_paths;
+    uint8_t num_rcv_paths;
     /**
      * hashtable of streams
      */
@@ -596,6 +604,30 @@ static int update_max_streams(struct st_quicly_max_streams_t *m, uint64_t count)
 int quicly_connection_is_ready(quicly_conn_t *conn)
 {
     return conn->application != NULL;
+}
+
+static quicly_path_t *quicly_new_path(quicly_conn_t *master_conn, quicly_conn_t *conn,
+                                      uint64_t path_id, quicly_cid_t pcid,
+                                      int sending_side, quicly_path_state_t state)
+{
+    quicly_path_t *path;
+
+    if ((path = malloc(sizeof(quicly_path_t))) == NULL)
+        return NULL;
+
+    conn->path = path;
+    path->master_conn = master_conn;
+    path->conn = conn;
+    path->sending_side = sending_side;
+    path->path_id = path_id;
+    path->state = state;
+
+    printf("new_path: %"PRIu64"  %s   pcid %s\n",
+            path_id,
+            sending_side? "send-side": "receive-side",
+            quicly_hexdump(pcid.cid, pcid.len, 2));
+
+    return path;
 }
 
 static int stream_is_destroyable(quicly_stream_t *stream)
@@ -1557,6 +1589,19 @@ static int collect_transport_parameters(ptls_t *tls, struct st_ptls_handshake_pr
     return type == QUICLY_TLS_EXTENSION_TYPE_TRANSPORT_PARAMETERS;
 }
 
+static int initialize_path_0(quicly_conn_t *conn) {
+                     /* quicly_new_path(masterconn, conn, path_id, pcid, sending_side, state)*/
+    conn->rcv_path[0] = quicly_new_path(conn, conn, 0, conn->super.host.src_cid, 0, QUICLY_PATH_ACTIVE);
+    conn->snd_path[0] = quicly_new_path(conn, conn, 0, conn->super.peer.cid    , 1, QUICLY_PATH_ACTIVE);
+    conn->num_rcv_paths = 1;
+    conn->num_snd_paths = 1;
+
+    if (conn->rcv_path[0] == NULL || conn->snd_path[0] == NULL)
+        return QUICLY_ERROR_MALLOC;
+
+    return 0;
+}
+
 static quicly_conn_t *create_connection(quicly_context_t *ctx, const char *server_name, struct sockaddr *remote_addr,
                                         struct sockaddr *local_addr, const quicly_cid_plaintext_t *new_cid,
                                         ptls_handshake_properties_t *handshake_properties)
@@ -1615,6 +1660,10 @@ static quicly_conn_t *create_connection(quicly_context_t *ctx, const char *serve
     } else {
         conn->_.super.version = QUICLY_PROTOCOL_VERSION;
     }
+    conn->_.num_snd_paths = 0;
+    conn->_.num_rcv_paths = 0;
+    initialize_path_0(&conn->_);
+
     quicly_linklist_init(&conn->_.super._default_scheduler.active);
     quicly_linklist_init(&conn->_.super._default_scheduler.blocked);
     conn->_.streams = kh_init(quicly_stream_t);
@@ -2535,6 +2584,49 @@ static int allocate_ack_eliciting_frame(quicly_conn_t *conn, quicly_send_context
     return ret;
 }
 
+int quicly_send_new_cid_new_path(quicly_conn_t *conn, quicly_send_context_t *s)
+{
+    quicly_context_t *ctx = conn->super.ctx;
+    uint64_t path_id = conn->num_rcv_paths; /* this is next path_id */
+    int sending_side = 0;
+    int state = QUICLY_PATH_ACTIVE;
+
+    ptls_iovec_t pcid_vec, token;
+    uint64_t retire_prior_to = 0;
+    int ret = 0;
+
+    token.base = malloc(QUICLY_STATELESS_RESET_TOKEN_LEN);
+    token.len = QUICLY_STATELESS_RESET_TOKEN_LEN;
+
+    /* temp cid, will be replaced by the one specified by peer */
+    quicly_cid_t src_cid, peer_cid;
+    ctx->tls->random_bytes(peer_cid.cid, QUICLY_MIN_INITIAL_DCID_LEN);
+    peer_cid.len = QUICLY_MIN_INITIAL_DCID_LEN;
+
+    quicly_conn_t *new_conn = create_sub_connection(conn, path_id, peer_cid,
+                                                    conn->super.peer.address,
+                                                    conn->super.host.address);
+    src_cid = new_conn->super.host.src_cid;
+
+    quicly_path_t *path = quicly_new_path(conn, new_conn, path_id, src_cid, sending_side, state);
+    if (path == NULL)
+        return QUICLY_ERROR_MALLOC;
+
+    conn->rcv_path[path_id] = path;
+    conn->num_rcv_paths++;
+
+    pcid_vec.base = src_cid.cid;
+    pcid_vec.len  = src_cid.len;
+
+    // preparing new packet
+    if ((ret = allocate_frame(conn, s, QUICLY_NEW_CONNECTION_ID_FRAME_CAPACITY)) != 0)
+        return ret;
+
+    s->dst = quicly_encode_new_connection_id_frame(s->dst, path_id, retire_prior_to, pcid_vec, token);
+
+    return 0;
+}
+
 static int send_ack(quicly_conn_t *conn, struct st_quicly_pn_space_t *space, quicly_send_context_t *s)
 {
     uint64_t ack_delay;
@@ -3426,6 +3518,10 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                 } while (conn->egress.path_challenge.head != NULL);
                 conn->egress.path_challenge.tail_ref = &conn->egress.path_challenge.head;
             }
+
+            if (multipath && conn->num_rcv_paths == 1 && !quicly_is_client(conn))
+                quicly_send_new_cid_new_path(conn, s);
+
             /* send max_streams frames */
             if ((ret = send_max_streams(conn, 1, s)) != 0)
                 goto Exit;
@@ -4220,7 +4316,41 @@ static int handle_dummy_frame(quicly_conn_t *conn, struct st_quicly_handle_paylo
 static int handle_new_connection_id_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)
 {
     quicly_new_connection_id_frame_t frame;
-    return quicly_decode_new_connection_id_frame(&state->src, state->end, &frame);
+    int ret = quicly_decode_new_connection_id_frame(&state->src, state->end, &frame);
+    if (ret != 0) {
+        printf("decode_new_connection_id_frame failed \n");
+        return ret;
+    }
+    /* for multipath, frame.sequence is the path id */
+    if (frame.sequence >= 0 &&
+        frame.sequence < conn->num_snd_paths) {
+        /* add this pcid to the existing path */
+    }
+    if (frame.sequence >= conn->num_snd_paths) {
+        /* convert from ptls_iovec_t to quicly_cid_t */
+        quicly_cid_t pcid;
+        set_cid(&pcid, frame.cid);
+
+        quicly_conn_t *new_conn = create_sub_connection(conn, frame.sequence, pcid,
+                                                        conn->super.peer.address,
+                                                        conn->super.host.address);
+
+        /* should we manually assign fields instead? */
+        quicly_path_t *path = quicly_new_path(conn,
+                                  new_conn,
+                                  frame.sequence,
+                                  pcid,
+                                  1,
+                                  QUICLY_PATH_READY);
+        if (new_conn == NULL || path == NULL)
+            ret = QUICLY_ERROR_MALLOC;
+        /* use num_snd_paths which is the local counter,
+         * instead of frame.path_id which is controlled by peer */
+        conn->snd_path[conn->num_snd_paths] = path;
+        conn->num_snd_paths++;
+        printf("receive new_cid_frame: increase num_snd_paths to: %d\n", conn->num_snd_paths);
+    }
+    return 0;
 }
 
 static int handle_retire_connection_id_frame(quicly_conn_t *conn, struct st_quicly_handle_payload_state_t *state)

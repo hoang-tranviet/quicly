@@ -809,6 +809,10 @@ static quicly_state_t quicly_get_state(quicly_conn_t *conn);
  */
 int quicly_connection_is_ready(quicly_conn_t *conn);
 /**
+ * Send NEW_CONNECTION_ID frame with new pathID
+ */
+int quicly_send_new_cid_new_path(quicly_conn_t *conn, quicly_send_context_t *s);
+/**
  *
  */
 static uint32_t quicly_num_streams(quicly_conn_t *conn);
