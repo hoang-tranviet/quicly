@@ -89,6 +89,7 @@ typedef struct st_quicly_cid_t quicly_cid_t;
 typedef struct st_quicly_cid_plaintext_t quicly_cid_plaintext_t;
 typedef struct st_quicly_context_t quicly_context_t;
 typedef struct st_quicly_conn_t quicly_conn_t;
+typedef struct st_quicly_path_t quicly_path_t;
 typedef struct st_quicly_stream_t quicly_stream_t;
 typedef struct st_quicly_send_context_t quicly_send_context_t;
 typedef struct st_quicly_address_token_plaintext_t quicly_address_token_plaintext_t;
@@ -392,6 +393,20 @@ typedef enum {
     QUICLY_STATE_DRAINING
 } quicly_state_t;
 
+/**
+ * path state
+ */
+typedef enum {
+    QUICLY_PATH_READY,     /* after sending or receiving a first NEW_CONNECTION_ID
+                             * with an associated Path ID */
+    QUICLY_PATH_ACTIVE,    /* path usage or PATH_UPDATE or 4-tuple validated */
+
+    QUICLY_PATH_DISABLED,  /* after reception or sending of REMOVE_ADDRESS */
+
+    QUICLY_PATH_CLOSED,    /* after sending or receiving PATH_UPDATE */
+} quicly_path_state_t;
+
+
 struct st_quicly_conn_streamgroup_state_t {
     uint32_t num_streams;
     quicly_stream_id_t next_stream_id;
@@ -501,6 +516,18 @@ struct _st_quicly_conn_public_t {
     } stats;
     uint32_t version;
     void *data;
+};
+
+struct st_quicly_path_t {
+    quicly_conn_t *conn;
+    quicly_conn_t *master_conn;
+
+    int sending_side;   /* bool */
+    uint64_t path_id;
+    quicly_path_state_t state;
+
+    uint8_t local_address_id;
+    uint8_t remote_address_id;
 };
 
 typedef enum {
