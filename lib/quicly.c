@@ -1654,6 +1654,57 @@ static quicly_conn_t *create_connection(quicly_context_t *ctx, const char *serve
     return &conn->_;
 }
 
+/* quicly_conn_t object, but represents per-path state */
+static quicly_conn_t *create_sub_connection(quicly_conn_t *master_conn, uint64_t path_id, quicly_cid_t peer_cid,
+                                            quicly_address_t remote_addr, quicly_address_t local_addr)
+{
+    quicly_context_t *ctx = master_conn->super.ctx;
+
+    quicly_conn_t *conn;
+    if ((conn = malloc(sizeof(*conn))) == NULL)
+        return NULL;
+
+    memset(conn, 0, sizeof(*conn));
+    conn->super.ctx = ctx;
+
+    conn->crypto = master_conn->crypto;
+
+    conn->super.master_id = master_conn->super.master_id;
+
+    conn->super.host.address = local_addr;
+    conn->super.peer.address = remote_addr;
+
+    conn->super.master_id.path_id = path_id;
+    printf("create_sub_connection: master_id %d path_id %d\n", conn->super.master_id.master_id, conn->super.master_id.path_id);
+
+    if (ctx->cid_encryptor != NULL) {
+        ctx->cid_encryptor->encrypt_cid(ctx->cid_encryptor, &conn->super.host.src_cid, &conn->super.host.stateless_reset_token,
+                                        &conn->super.master_id);
+    }
+
+    conn->super.state = QUICLY_STATE_SUB_INITIAL;
+
+    conn->super.peer.cid = peer_cid;
+
+    conn->super.peer.transport_params = default_transport_params;
+
+    quicly_sentmap_init(&conn->egress.sentmap);
+    quicly_loss_init(&conn->egress.loss, &conn->super.ctx->loss,
+                     conn->super.ctx->loss.default_initial_rtt /* FIXME remember initial_rtt in session ticket */,
+                     &conn->super.peer.transport_params.max_ack_delay, &conn->super.peer.transport_params.ack_delay_exponent);
+
+    conn->egress.path_challenge.tail_ref = &conn->egress.path_challenge.head;
+    conn->egress.send_ack_at = INT64_MAX;
+    quicly_cc_init(&conn->egress.cc);
+
+    conn->crypto.handshake_properties.collect_extension = collect_transport_parameters;
+
+    conn->idle_timeout.at = INT64_MAX;
+    conn->idle_timeout.should_rearm_on_send = 1;
+
+    return conn;
+}
+
 static int client_collected_extensions(ptls_t *tls, ptls_handshake_properties_t *properties, ptls_raw_extension_t *slots)
 {
     quicly_conn_t *conn = (void *)((char *)properties - offsetof(quicly_conn_t, crypto.handshake_properties));
