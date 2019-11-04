@@ -375,6 +375,10 @@ typedef enum {
      */
     QUICLY_STATE_FIRSTFLIGHT,
     /**
+     * the subconnection has been created but no traffic yet
+     */
+    QUICLY_STATE_SUB_INITIAL,
+    /**
      * while connected
      */
     QUICLY_STATE_CONNECTED,
