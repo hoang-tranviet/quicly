@@ -2474,6 +2474,7 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
         coalescible = 0;
     } else {
         /* use the existing packet */
+        printf("\t TargetReady \n");
         goto TargetReady;
     }
 
@@ -2498,6 +2499,7 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
         coalescible = 0;
     }
 
+    printf("\t allocate packet \n");
     /* allocate packet */
     if (coalescible) {
         s->dst_end += s->target.cipher->aead->algo->tag_size; /* restore the AEAD tag size (tag size can differ bet. epochs) */
@@ -2522,10 +2524,14 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
     QUICLY_PROBE(PACKET_PREPARE, conn, probe_now(), s->current.first_byte,
                  QUICLY_PROBE_HEXDUMP(conn->super.peer.cid.cid, conn->super.peer.cid.len));
 
+    printf("\t emit header \n");
+
     /* emit header */
     s->target.first_byte_at = s->dst;
     *s->dst++ = s->current.first_byte | 0x1 /* pnlen == 2 */;
     if (QUICLY_PACKET_IS_LONG_HEADER(s->current.first_byte)) {
+        if (master_conn->num_snd_paths > 1)
+            printf("wtf? multipath available with long header? \n");
         s->dst = quicly_encode32(s->dst, conn->super.version);
         *s->dst++ = conn->super.peer.cid.len;
         s->dst = emit_cid(s->dst, &conn->super.peer.cid);
@@ -2551,6 +2557,7 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
     assert(s->dst_end - s->dst >= QUICLY_MAX_PN_SIZE - QUICLY_SEND_PN_SIZE);
 
     {
+        printf("\t register to sentmap \n");
         /* register to sentmap */
         uint8_t ack_epoch = get_epoch(s->current.first_byte);
         if (ack_epoch == QUICLY_EPOCH_0RTT)
