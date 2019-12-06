@@ -188,12 +188,14 @@ struct st_quicly_conn_t {
      */
     struct st_quicly_application_space_t *application;
     /**
-     * list of paths. (TODO: change to dynamic list like picoquic does)
+     * list of paths, only available in master_conn.
+     * (TODO: change to dynamic list like how picoquic does)
      */
     quicly_path_t *snd_path[UINT8_MAX];
     quicly_path_t *rcv_path[UINT8_MAX];
     uint8_t num_snd_paths;
     uint8_t num_rcv_paths;
+    uint64_t last_path;
     /**
      * hashtable of streams
      */
