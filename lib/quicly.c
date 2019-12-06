@@ -2371,6 +2371,8 @@ struct st_quicly_send_context_t {
     uint8_t *dst_end;
     /* address at which payload starts */
     uint8_t *dst_payload_from;
+    /* for multipath */
+    uint64_t path_id;
 };
 
 static int commit_send_packet(quicly_conn_t *conn, quicly_send_context_t *s, int coalesced)
@@ -2381,15 +2383,18 @@ static int commit_send_packet(quicly_conn_t *conn, quicly_send_context_t *s, int
 
     assert(s->dst != s->dst_payload_from);
 
+    quicly_conn_t *master_conn = conn->path->master_conn;
+    conn = conn->snd_path[s->path_id]->conn;    /* the output-path */
+
     /* pad so that the pn + payload would be at least 4 bytes */
     while (s->dst - s->dst_payload_from < QUICLY_MAX_PN_SIZE - QUICLY_SEND_PN_SIZE)
         *s->dst++ = QUICLY_FRAME_TYPE_PADDING;
 
     /* the last packet of first-flight datagrams is padded to become 1280 bytes */
-    if (!coalesced && quicly_is_client(conn) &&
+    if (!coalesced && quicly_is_client(master_conn) &&
         (s->target.packet->data.base[0] & QUICLY_PACKET_TYPE_BITMASK) == QUICLY_PACKET_TYPE_INITIAL) {
         const size_t max_size = QUICLY_MAX_PACKET_SIZE - QUICLY_AEAD_TAG_SIZE;
-        assert(quicly_is_client(conn));
+        assert(quicly_is_client(master_conn));
         assert(s->dst - s->target.packet->data.base <= max_size);
         memset(s->dst, QUICLY_FRAME_TYPE_PADDING, s->target.packet->data.base + max_size - s->dst);
         s->dst = s->target.packet->data.base + max_size;
@@ -2402,12 +2407,12 @@ static int commit_send_packet(quicly_conn_t *conn, quicly_send_context_t *s, int
         length |= 0x4000;
         quicly_encode16(s->dst_payload_from - QUICLY_SEND_PN_SIZE - 2, length);
     } else {
-        if (conn->egress.packet_number >= conn->application->cipher.egress.key_update_pn.next) {
+        if (conn->egress.packet_number >= master_conn->application->cipher.egress.key_update_pn.next) {
             int ret;
-            if ((ret = update_1rtt_egress_key(conn)) != 0)
+            if ((ret = update_1rtt_egress_key(master_conn)) != 0)
                 return ret;
         }
-        if ((conn->application->cipher.egress.key_phase & 1) != 0)
+        if ((master_conn->application->cipher.egress.key_phase & 1) != 0)
             *s->target.first_byte_at |= QUICLY_KEY_PHASE_BIT;
     }
     quicly_encode16(s->dst_payload_from - QUICLY_SEND_PN_SIZE, (uint16_t)conn->egress.packet_number);
@@ -2466,9 +2471,15 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
 {
     int coalescible, ret;
 
+    quicly_conn_t *master_conn = conn->path->master_conn;
+    uint64_t pid;
+
     assert((s->current.first_byte & QUICLY_QUIC_BIT) != 0);
 
     /* allocate and setup the new packet if necessary */
+    if (multipath && master_conn->num_snd_paths > 1) {
+        coalescible = 0;
+    } else
     if (s->dst_end - s->dst < min_space || s->target.first_byte_at == NULL) {
         coalescible = 0;
     } else if (((*s->target.first_byte_at ^ s->current.first_byte) & QUICLY_PACKET_TYPE_BITMASK) != 0) {
@@ -2500,6 +2511,27 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
             return ret;
     } else {
         coalescible = 0;
+    }
+
+    printf("\t packet type: %d\n", s->current.first_byte);
+    if (multipath  && !coalescible)
+            printf("\t not coalescible, num_snd_paths: %u \n", master_conn->num_snd_paths);
+    if (multipath  && master_conn->num_snd_paths > 1 &&
+        !coalescible  && !QUICLY_PACKET_IS_LONG_HEADER(s->current.first_byte)) {
+        /* choose the path in round-robin fashion
+         * TODO: Replace by a modular scheduler */
+
+        /* modulo to make a round robin, instead of overflowing the path id */
+        pid = (master_conn->last_path + 1) % master_conn->num_snd_paths;
+
+        if (conn->snd_path[pid] == NULL)
+            printf("send path %ld is null!\n", pid);
+        else {
+            printf("switching to path %ld\n", pid);
+            conn = conn->snd_path[pid]->conn;
+            master_conn->last_path = pid;
+        }
+        s->path_id = pid;
     }
 
     printf("\t allocate packet \n");
@@ -2560,7 +2592,7 @@ static int _do_allocate_frame(quicly_conn_t *conn, quicly_send_context_t *s, siz
     assert(s->dst_end - s->dst >= QUICLY_MAX_PN_SIZE - QUICLY_SEND_PN_SIZE);
 
     {
-        printf("\t register to sentmap \n");
+        printf("\t register to sentmap:  pn: %zu \n", conn->egress.packet_number);
         /* register to sentmap */
         uint8_t ack_epoch = get_epoch(s->current.first_byte);
         if (ack_epoch == QUICLY_EPOCH_0RTT)
@@ -3604,6 +3636,7 @@ Exit:
 int quicly_send(quicly_conn_t *conn, quicly_datagram_t **packets, size_t *num_packets)
 {
     quicly_send_context_t s = {{NULL, -1}, {NULL, NULL, NULL}, packets, *num_packets};
+    s.path_id = 0;
     int ret;
 
     update_now(conn->super.ctx);
