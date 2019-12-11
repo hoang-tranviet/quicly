@@ -391,6 +391,7 @@ static int send_one(int fd, quicly_datagram_t *p)
     int ret;
     struct msghdr mess;
     struct iovec vec;
+    fprintf(stderr, "send_one\n");
     memset(&mess, 0, sizeof(mess));
     mess.msg_name = &p->dest.sa;
     mess.msg_namelen = quicly_get_socklen(&p->dest.sa);

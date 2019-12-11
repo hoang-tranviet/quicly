@@ -884,6 +884,7 @@ static void destroy_stream(quicly_stream_t *stream, int err)
 {
     quicly_conn_t *conn = stream->conn;
 
+    printf("\t destroy_stream:%ld\n", stream->stream_id);
     if (stream->callbacks != NULL)
         stream->callbacks->on_destroy(stream, err);
 
@@ -2430,6 +2431,7 @@ static int commit_send_packet(quicly_conn_t *conn, quicly_send_context_t *s, int
     } else {
         packet_bytes_in_flight = 0;
     }
+    printf("\t %s: quicly_sentmap_commit\n", __FUNCTION__);
     quicly_sentmap_commit(&conn->egress.sentmap, (uint16_t)packet_bytes_in_flight);
 
     QUICLY_PROBE(PACKET_COMMIT, conn, probe_now(), conn->egress.packet_number, s->dst - s->target.first_byte_at,
@@ -3304,6 +3306,7 @@ static int send_handshake_flow(quicly_conn_t *conn, size_t epoch, quicly_send_co
 
     /* send data */
     while ((conn->pending.flows & (uint8_t)(1 << epoch)) != 0) {
+        printf("\tsend_handshake_flow epoch %zu: send_stream !!!!!\n", epoch);
         quicly_stream_t *stream = quicly_get_stream(conn, -(quicly_stream_id_t)(1 + epoch));
         assert(stream != NULL);
         if ((ret = quicly_send_stream(stream, s)) != 0)
@@ -3313,6 +3316,7 @@ static int send_handshake_flow(quicly_conn_t *conn, size_t epoch, quicly_send_co
 
     /* send probe if requested */
     if (send_probe) {
+        printf("\tsend_handshake_flow epoch %zu: send_probe %zu packets !!!!!\n", epoch, s->num_packets);
         assert(quicly_is_client(conn));
         if (s->num_packets == 0 && s->target.packet == NULL) {
             if ((ret = allocate_frame(conn, s, 1)) != 0)
@@ -3569,11 +3573,13 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
         while (s->num_packets != s->max_packets && quicly_linklist_is_linked(&conn->pending.streams.control)) {
             quicly_stream_t *stream =
                 (void *)((char *)conn->pending.streams.control.next - offsetof(quicly_stream_t, _send_aux.pending_link.control));
+           fprintf(stderr, "%s: send stream control frames \n", __FUNCTION__);
             if ((ret = send_stream_control_frames(stream, s)) != 0)
                 goto Exit;
             quicly_linklist_unlink(&stream->_send_aux.pending_link.control);
         }
         /* send STREAM frames */
+        fprintf(stderr, "%s: send STREAM frames \n", __FUNCTION__);
         /* this do_send() is mapped to default_stream_scheduler_do_send() */
         if ((ret = conn->super.ctx->stream_scheduler->do_send(conn->super.ctx->stream_scheduler, conn, s)) != 0)
             goto Exit;
@@ -3611,7 +3617,7 @@ int quicly_send(quicly_conn_t *conn, quicly_datagram_t **packets, size_t *num_pa
     QUICLY_PROBE(SEND, conn, probe_now(), conn->super.state,
                  QUICLY_PROBE_HEXDUMP(conn->super.peer.cid.cid, conn->super.peer.cid.len));
 
-    // fprintf(stderr, "%s: num_packets: %ld \n", __FUNCTION__, *num_packets);
+    fprintf(stderr, "%s: num_packets: %ld \n", __FUNCTION__, *num_packets);
 
     if (conn->super.state >= QUICLY_STATE_CLOSING) {
         /* check if the connection can be closed now (after 3 pto) */
@@ -4804,6 +4810,7 @@ int quicly_receive(quicly_conn_t *conn, struct sockaddr *dest_addr, struct socka
             assert(stream != NULL);
             quicly_streambuf_t *buf = stream->data;
             if (buf->egress.vecs.size == 0) {
+                printf("\t %s: QUICLY_EPOCH_HANDSHAKE: quicly_sentmap_prepare\n", __FUNCTION__);
                 if ((ret = quicly_sentmap_prepare(&conn->egress.sentmap, conn->egress.packet_number, now,
                                                   QUICLY_EPOCH_HANDSHAKE)) != 0)
                     goto Exit;
@@ -4811,6 +4818,7 @@ int quicly_receive(quicly_conn_t *conn, struct sockaddr *dest_addr, struct socka
                     ret = PTLS_ERROR_NO_MEMORY;
                     goto Exit;
                 }
+                printf("\t %s: QUICLY_EPOCH_HANDSHAKE: quicly_sentmap_commit\n", __FUNCTION__);
                 quicly_sentmap_commit(&conn->egress.sentmap, 0);
                 ++conn->egress.packet_number;
                 conn->crypto.handshake_scheduled_for_discard = 1;
