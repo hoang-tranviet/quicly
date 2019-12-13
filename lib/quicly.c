@@ -113,6 +113,8 @@ struct st_quicly_pending_path_challenge_t {
 };
 
 struct st_quicly_pn_space_t {
+    /* for multipath */
+    uint64_t path_id;
     /**
      * acks to be sent to peer
      */
@@ -1110,6 +1112,7 @@ static int setup_handshake_space_and_flow(quicly_conn_t *conn, size_t epoch)
     struct st_quicly_handshake_space_t **space = epoch == QUICLY_EPOCH_INITIAL ? &conn->initial : &conn->handshake;
     if ((*space = (void *)alloc_pn_space(sizeof(struct st_quicly_handshake_space_t))) == NULL)
         return PTLS_ERROR_NO_MEMORY;
+    (*space)->super.path_id = 0;
     return create_handshake_flow(conn, epoch);
 }
 
@@ -1743,6 +1746,13 @@ static quicly_conn_t *create_sub_connection(quicly_conn_t *master_conn, uint64_t
     conn->super.peer.cid = peer_cid;
 
     conn->super.peer.transport_params = default_transport_params;
+
+    /* similar to setup_application_space() */
+    if ((conn->application = (void *)alloc_pn_space(sizeof(struct st_quicly_application_space_t))) == NULL) {
+        free(conn);
+        return NULL;
+    }
+    conn->application->super.path_id = path_id;
 
     quicly_sentmap_init(&conn->egress.sentmap);
     quicly_loss_init(&conn->egress.loss, &conn->super.ctx->loss,
@@ -2696,8 +2706,7 @@ static int send_ack(quicly_conn_t *conn, struct st_quicly_pn_space_t *space, qui
 Emit:
     if ((ret = allocate_frame(conn, s, QUICLY_ACK_FRAME_CAPACITY)) != 0)
         return ret;
-    // Todo: use correct path_id
-    uint8_t *new_dst = quicly_encode_ack_frame(s->dst, s->dst_end, &space->ack_queue, ack_delay, 0);
+    uint8_t *new_dst = quicly_encode_ack_frame(s->dst, s->dst_end, &space->ack_queue, ack_delay, space->path_id);
     /* switch path context */
     conn = conn->snd_path[s->path_id]->conn;
     if (new_dst == NULL) {
@@ -3428,6 +3437,7 @@ static int update_traffic_key_cb(ptls_update_traffic_key_t *self, ptls_t *tls, i
         assert(is_enc == quicly_is_client(conn));
         if (conn->application == NULL && (ret = setup_application_space(conn)) != 0)
             return ret;
+        conn->application->super.path_id = 0;
         if (is_enc) {
             SELECT_CIPHER_CONTEXT(&conn->application->cipher.egress.key);
         } else {
@@ -3446,6 +3456,7 @@ static int update_traffic_key_cb(ptls_update_traffic_key_t *self, ptls_t *tls, i
                 return ret;
         if (conn->application == NULL && (ret = setup_application_space(conn)) != 0)
             return ret;
+        conn->application->super.path_id = 0;
         uint8_t *secret_store;
         if (is_enc) {
             if (conn->application->cipher.egress.key.aead != NULL)
