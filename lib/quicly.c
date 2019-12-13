@@ -98,6 +98,9 @@ KHASH_MAP_INIT_INT64(quicly_stream_t, quicly_stream_t *)
 #define QUICLY_PROBE_ESCAPE_UNSAFE_STRING(s, l)
 #endif
 
+// todo: set by users via app argument
+#define multipath 1
+
 struct st_quicly_cipher_context_t {
     ptls_aead_context_t *aead;
     ptls_cipher_context_t *header_protection;
