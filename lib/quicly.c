@@ -2652,7 +2652,10 @@ static int send_ack(quicly_conn_t *conn, struct st_quicly_pn_space_t *space, qui
 Emit:
     if ((ret = allocate_frame(conn, s, QUICLY_ACK_FRAME_CAPACITY)) != 0)
         return ret;
-    uint8_t *new_dst = quicly_encode_ack_frame(s->dst, s->dst_end, &space->ack_queue, ack_delay);
+    // Todo: use correct path_id
+    uint8_t *new_dst = quicly_encode_ack_frame(s->dst, s->dst_end, &space->ack_queue, ack_delay, 0);
+    /* switch path context */
+    conn = conn->snd_path[s->path_id]->conn;
     if (new_dst == NULL) {
         /* no space, retry with new MTU-sized packet */
         if ((ret = commit_send_packet(conn, s, 0)) != 0)
@@ -3881,6 +3884,11 @@ static int handle_ack_frame(quicly_conn_t *conn, struct st_quicly_handle_payload
         return ret;
 
     uint64_t packet_number = frame.smallest_acknowledged;
+    if (multipath) {
+        printf("\t ack on path %zu \n", frame.path_id);
+        /* update the specified path, not necessarily the current one */
+        conn = conn->snd_path[frame.path_id]->conn;
+    }
 
     switch (state->epoch) {
     case QUICLY_EPOCH_0RTT:
@@ -3898,7 +3906,7 @@ static int handle_ack_frame(quicly_conn_t *conn, struct st_quicly_handle_payload
     while (1) {
         uint64_t block_length = frame.ack_block_lengths[gap_index];
         if (block_length != 0) {
-            QUICLY_PROBE(QUICTRACE_RECV_ACK, conn, probe_now(), packet_number, packet_number + block_length - 1);
+            QUICLY_PROBE(QUICTRACE_RECV_ACK, conn, probe_now(), frame.path_id, packet_number, packet_number + block_length - 1);
             while (quicly_sentmap_get(&iter)->packet_number < packet_number)
                 quicly_sentmap_skip(&iter);
             do {

@@ -132,7 +132,7 @@ static void test_ack_encode(void)
     quicly_ranges_add(&ranges, 0x12, 0x14);
 
     /* encode */
-    end = quicly_encode_ack_frame(buf, buf + sizeof(buf), &ranges, 63);
+    end = quicly_encode_ack_frame(buf, buf + sizeof(buf), &ranges, 63, 0);
     ok(end - buf == 5);
     /* decode */
     src = buf + 1;
@@ -146,7 +146,7 @@ static void test_ack_encode(void)
     quicly_ranges_add(&ranges, 0x10, 0x11);
 
     /* encode */
-    end = quicly_encode_ack_frame(buf, buf + sizeof(buf), &ranges, 63);
+    end = quicly_encode_ack_frame(buf, buf + sizeof(buf), &ranges, 63, 0);
     ok(end - buf == 7);
     /* decode */
     src = buf + 1;

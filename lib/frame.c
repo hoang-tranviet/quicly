@@ -31,7 +31,7 @@ uint8_t *quicly_encode_path_challenge_frame(uint8_t *dst, int is_response, const
     return dst;
 }
 
-uint8_t *quicly_encode_ack_frame(uint8_t *dst, uint8_t *dst_end, quicly_ranges_t *ranges, uint64_t ack_delay)
+uint8_t *quicly_encode_ack_frame(uint8_t *dst, uint8_t *dst_end, quicly_ranges_t *ranges, uint64_t ack_delay, uint64_t path_id)
 {
 #define WRITE_BLOCK(start, end)                                                                                                    \
     do {                                                                                                                           \
@@ -47,6 +47,7 @@ uint8_t *quicly_encode_ack_frame(uint8_t *dst, uint8_t *dst_end, quicly_ranges_t
     assert(ranges->num_ranges != 0);
 
     *dst++ = QUICLY_FRAME_TYPE_ACK;
+    dst = quicly_encodev(dst, path_id);                             /* multipath: ack packets on which path */
     dst = quicly_encodev(dst, ranges->ranges[range_index].end - 1); /* largest acknowledged */
     dst = quicly_encodev(dst, ack_delay);                           /* ack delay */
     dst = quicly_encodev(dst, ranges->num_ranges - 1);              /* ack blocks */
@@ -67,6 +68,8 @@ int quicly_decode_ack_frame(const uint8_t **src, const uint8_t *end, quicly_ack_
 {
     uint64_t i, num_gaps, gap, ack_range;
 
+    if ((frame->path_id = quicly_decodev(src, end)) == UINT64_MAX)
+        goto Error;
     if ((frame->largest_acknowledged = quicly_decodev(src, end)) == UINT64_MAX)
         goto Error;
     if ((frame->ack_delay = quicly_decodev(src, end)) == UINT64_MAX)
