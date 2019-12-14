@@ -1638,14 +1638,11 @@ static quicly_conn_t *create_connection(quicly_context_t *ctx, const char *serve
     conn->_.super.master_id = *new_cid;
     set_address(&conn->_.super.host.address, local_addr);
     set_address(&conn->_.super.peer.address, remote_addr);
-    if (ctx->cid_encryptor != NULL) {
+        /* create encrypted cid and SR Token on both server and client */
         conn->_.super.master_id.path_id = 0;
         ctx->cid_encryptor->encrypt_cid(ctx->cid_encryptor, &conn->_.super.host.src_cid, &conn->_.super.host.stateless_reset_token,
                                         &conn->_.super.master_id);
         conn->_.super.master_id.path_id = 1;
-    } else {
-        conn->_.super.master_id.path_id = QUICLY_MAX_PATH_ID;
-    }
     conn->_.super.state = QUICLY_STATE_FIRSTFLIGHT;
     if (server_name != NULL) {
         ctx->tls->random_bytes(conn->_.super.peer.cid.cid, QUICLY_MIN_INITIAL_DCID_LEN);

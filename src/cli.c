@@ -1119,6 +1119,13 @@ int main(int argc, char **argv)
         hs_properties.client.negotiated_protocols.count = negotiated_protocols.count;
         if (session_file != NULL)
             load_session();
+
+        /* also initialize CID encryptor, just like the server side */
+        static char random_key[17];
+        tlsctx.random_bytes(random_key, sizeof(random_key) - 1);
+        cid_key = random_key;
+        ctx.cid_encryptor = quicly_new_default_cid_encryptor(&ptls_openssl_bfecb, &ptls_openssl_aes128ecb, &ptls_openssl_sha256,
+                                                             ptls_iovec_init(cid_key, strlen(cid_key)));
     }
     if (argc != 2) {
         fprintf(stderr, "missing host and port\n");
