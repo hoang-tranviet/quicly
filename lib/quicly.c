@@ -3580,7 +3580,7 @@ static int do_send(quicly_conn_t *conn, quicly_send_context_t *s)
                 conn->egress.path_challenge.tail_ref = &conn->egress.path_challenge.head;
             }
 
-            if (multipath && conn->num_rcv_paths == 1 && !quicly_is_client(conn))
+            if (multipath && conn->num_rcv_paths == 1)
                 quicly_send_new_cid_new_path(conn, s);
 
             /* send max_streams frames */
